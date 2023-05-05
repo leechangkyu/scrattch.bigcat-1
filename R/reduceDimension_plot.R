@@ -972,3 +972,133 @@ plot_RD_highlight <- function(rd.dat,
 }
 
 
+#' Plot points with ccf coordinates in ABA meshes
+#'
+#' @param df dataframe with coordinates of cells to be plotted and additional metadata if needed.
+#' @param col column in {df} to be used to color points.
+#' @param label_col column in {df} to be used to label groups of points. Default is NULL -- no labels will be plotted.
+#' @param pt.cex size of points to be plotted.
+#' @param label.cex size of labels if plotted.
+#' @param init initialize new 3d plot
+#' @param bg_col what color to use as background
+#' @param plot_structure list of meshes to plot -- using ABA acronyms
+#' @param structure_color what color to give the meshes. 
+#' @param structure_alpha what alpha to give the meshes. 
+#' @param style material of mesh to plot. Options are c("shiny", "matte", "cartoon", "none")
+
+#' @return 3d rgl plot visualize using rglwidget()
+#' @export
+#'
+
+plot_3d_merfish <- function(df, 
+                            col, 
+                            label_col=NULL,
+                            pt.cex=1, 
+                            label.cex=pt.cex, 
+                            init=TRUE, 
+                            bg_col="white",
+                            plot_structure = NULL,
+                            structure_color = "grey70",
+                            structure_alpha = 0.2,
+                            style = c("shiny", "matte", "cartoon", 
+                                      "none"),
+                            mesh_store = system.file("extdata", "ccf_2017_meshes.zip", package = "cocoframer") ){
+  
+  if (init) {
+    rgl::open3d()
+  }
+  
+  style <- match.arg(style, choices = c("shiny", "matte", "cartoon", 
+                                        "none"))
+  
+  if (!is.null(plot_structure)) {
+    meshes <- map(plot_structure, ~ccf_2017_mesh(acronym=.x,mesh_store=mesh_store))
+    names(meshes) <- plot_structure
+    
+    if(!length(structure_color) == length(plot_structure)){
+       mesh_colors <- rep(structure_color, length.out = length(plot_structure))
+    } else {
+      mesh_colors <- structure_color
+    }
+    
+    
+    if(!length(structure_alpha) == length(plot_structure)){
+      mesh_alphas <- rep(structure_alpha, length.out = length(plot_structure))
+    } else {
+      mesh_alphas <- structure_alpha
+    }
+    
+    for (i in seq_along(plot_structure)) {
+      meshes[[plot_structure[i]]]$material$alpha <- mesh_alphas[i]
+      meshes[[plot_structure[i]]]$material$color <- mesh_colors[i]
+      }
+    
+    if (style == "shiny") {
+      for (i in seq_along(meshes)) {
+        meshes[[i]]$material$specular <- "white"
+        meshes[[i]]$material$shininess <- 50
+      }
+    }     else if (style == "matte") {
+      for (i in seq_along(meshes)) {
+        meshes[[i]]$material$specular <- "black"
+      }
+    }     else if (style == "cartoon") {
+      for (i in seq_along(meshes)) {
+        meshes[[i]]$material$lit <- FALSE
+      }
+    }
+    
+    
+    rgl::view3d(theta = -45, phi = 35, zoom = 0.7)
+    rgl::shapelist3d(meshes, box = FALSE, axes = FALSE, xlab = "", 
+                     ylab = "", zlab = "")
+    
+  }
+  
+  
+  rgl::points3d(df$Dim1, df$Dim2, df$Dim3, col = df[[col]])
+
+  if(!is.null(label_col)){
+    cl.center = do.call("rbind", tapply(1:nrow(df), df[[label_col]], 
+                                        function(x) {
+                                          x = sample(x, pmin(length(x), 500))
+                                          center = c(median(df$Dim1[x]), median(df$Dim2[x]), median(df$Dim3[x]))
+                                          dist = as.matrix(dist(as.matrix(df[x, c("Dim1","Dim2","Dim3")])))
+                                          tmp = x[which.min(rowSums(dist))]
+                                          df[tmp,c("Dim1","Dim2","Dim3")]
+                                        }))
+    rgl.texts(cl.center$Dim1, cl.center$Dim2, cl.center$Dim3,text = row.names(cl.center), cex=label.cex)
+  }
+  
+  bg3d(col=bg_col)
+  
+}
+
+
+
+# function from cocoframer package but added variable to set mesh_store
+
+ccf_2017_mesh <- function(acronym = NULL,
+                          structure_id = NULL,
+                          material = NULL,
+                          mesh_store = system.file("extdata", "ccf_2017_meshes.zip", package = "cocoframer")) {
+  
+  if(is.null(acronym) & is.null(structure_id)) {
+    stop("Must provide either an acronym or a structure_id to retrieve a mesh.")
+  } else if(!is.null(acronym)) {
+    structure_id <- mba_structure_id(acronym)
+  }
+  
+
+  if(is.null(material)) {
+    if(acronym == "root") {
+      material <- list(color = "gray")
+    } else {
+      material <- list(color = ccf_2017_color(structure_id = structure_id))
+    }
+  }
+  
+  read_rgl_mesh_zip(mesh_name = structure_id,
+                    zip_file = mesh_store,
+                    material = material)
+}
